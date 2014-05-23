@@ -1,0 +1,177 @@
+#include "uv_connection.h"
+
+using std::unique_ptr;
+using std::move;
+
+#include <iostream>
+using std::cout;
+using std::cerr;
+using std::endl;
+
+using std::unique_lock;
+using std::mutex;
+//using std::condition_variable;
+
+#include <sstream>
+using std::stringstream;
+
+#include <exception>
+using std::runtime_error;
+/*
+#include <functional>
+using std::bind;
+using std::placeholders::_1;
+*/
+using std::string;
+
+using namespace memcx::memcuv;
+
+UvConnection::UvConnection(uv_loop_t *loop,
+                       const struct sockaddr_in &endpoint):
+loop_(loop),
+endpoint_(endpoint),
+connected_(false) {
+  //loop_ = uv_loop_new();
+  Connect();
+}
+
+UvConnection::~UvConnection() {
+}
+
+void UvConnection::Close() {
+  uv_read_stop(socket_stream());
+  uv_close(socket_handle(), NULL);
+  connected_ = false;
+}
+
+void UvConnection::SubmitRequest(unique_ptr<Request> request) {
+
+  if (!connected_) {
+    throw runtime_error("SendRequest while not connected");
+  }
+  
+  uv_async_t* async = new uv_async_t();
+  uv_async_init(loop_, async, UvConnection::WriteRequest);
+  request->set_data(this);
+  async->data = request.release();
+  uv_async_send(async);
+}
+
+void UvConnection::WriteRequest(uv_async_t* handle, int status) {
+  unique_ptr<Request> request(static_cast<Request*>(handle->data));
+  uv_close(reinterpret_cast<uv_handle_t*>(handle), NULL);
+
+  const string& cmd = request->command();
+  uv_buf_t write_buffer = uv_buf_init(const_cast<char*>(cmd.data()), cmd.size());
+  uv_write_t* write_req = new uv_write_t();
+  write_req->data = request.get();
+
+  UvConnection* ths = static_cast<UvConnection*>(request->data());
+  int r = uv_write(write_req, ths->socket_stream(), &write_buffer, 1, UvConnection::OnWrite);
+  if (r != 0) {
+    uv_err_t e = uv_last_error(ths->loop_);
+    cerr << "error: " << uv_err_name(e) << endl;
+    cerr << "uv_write failed: " << uv_strerror(e) << endl;
+    //TODO: throw
+  }
+  request.release();
+}
+
+void UvConnection::ProcessData() {
+  while (!requests_.empty()) {
+    Request* req = requests_.front();
+//TODO: possibly switch this conditional order
+//TODO: maybe only process if new data since last Ingest/tryreadline
+    if (req->Ingest(buffer_) > 0) {
+      if (req->complete()) {
+        req->Notify();
+        requests_.pop();
+        delete req;
+      }
+    } else {// out of data
+      break;
+    }
+  } 
+}
+
+void UvConnection::OnRead(uv_stream_t* req, ssize_t nread, uv_buf_t buf) {
+  UvConnection* ths = static_cast<UvConnection*>(req->data);
+
+  if (nread <= 0) {
+    cerr << "OnRead " << nread << endl;
+  }
+  if (nread > 0) {
+    ths->buffer_.MarkNewBytesRead(nread);
+    ths->ProcessData();
+  }
+}
+
+void UvConnection::Connect() {
+    uv_tcp_init(loop_, &socket_);
+    socket_.data = this;
+    uv_connect_t* req = new uv_connect_t();
+    req->data = this;
+    int r = uv_tcp_connect(req, &socket_, endpoint_, UvConnection::OnConnect);
+    if (r != 0) {
+      uv_err_t e = uv_last_error(loop_);
+      //TODO: logging?
+      cerr << "error: " << uv_err_name(e) << endl;
+      cerr << "tcp connect failed: " << uv_strerror(e) << endl;
+    }
+}
+
+void UvConnection::NotifyConnect() {
+  unique_lock<mutex> lock(wait_lock_);
+  connect_condition_.notify_all();
+}
+
+void UvConnection::WaitOnConnect() {
+  unique_lock<mutex> l(wait_lock_);
+  connect_condition_.wait(l, [this](){ return connected_ || !connect_err_.empty(); });
+  if (!connect_err_.empty()) {
+    throw runtime_error(connect_err_);
+  }
+}
+
+void UvConnection::OnConnect(uv_connect_t *req, int status) {
+  unique_ptr<uv_connect_t> connect_req(req);
+  UvConnection* ths = (UvConnection*)req->data;
+  if (status == -1) {
+    // TODO: retry with rate limit (?)
+    uv_err_t e = uv_last_error(ths->loop_);
+    stringstream ss;
+    ss << "tcp connect failed: " << uv_err_name(e) << " (" << uv_strerror(e) << ")";
+    ths->connect_err_ = ss.str();
+    ths->NotifyConnect();
+    return;
+  }
+
+  ths->connected_ = true;
+  ths->NotifyConnect();
+
+  int r = uv_read_start(ths->socket_stream(), UvConnection::GetBuffer, UvConnection::OnRead);
+  if (r != 0) {
+    uv_err_t e = uv_last_error(ths->loop_);
+    cerr << "error: " << uv_err_name(e) << endl;
+    cerr << "tcp read start failed: " << uv_strerror(e) << endl;
+  }
+}
+
+void UvConnection::OnWrite(uv_write_t *req, int status) {
+  unique_ptr<uv_write_t> write_req(req);
+  unique_ptr<Request> request(static_cast<Request*>(write_req->data));
+  if (status != 0) {
+    //TODO:
+    request->Notify(/*err*/);
+    return;
+  }
+  UvConnection* ths = static_cast<UvConnection*>(request->data());
+  ths->requests_.push(request.release());
+  ths->ProcessData();
+}
+
+uv_buf_t UvConnection::GetBuffer(uv_handle_t* handle, size_t suggested_size) {
+  UvConnection* ths = static_cast<UvConnection*>(handle->data);
+  return ths->buffer_.InitRead();
+}
+
