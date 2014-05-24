@@ -36,7 +36,7 @@ public:
   bool IsError() { return !error_msg_.empty(); }
 
   const std::string&  error_msg() { return error_msg_; }
-  void error_msg(const std::string& msg) { error_msg_ = msg; }
+  void error_msg(const std::string& msg) { error_msg_ = error_msg_.empty() ? msg : error_msg_; }
 
 private:
   

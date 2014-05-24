@@ -3,8 +3,9 @@ CXX=g++
 CFLAGS=-g -fPIC -std=c++11
 
 DEFS=
-INCL=-Isrc
-LIBS=src/libmemcuv.a -luv
+INCL=-Isrc -Ilibuv/include/uv.h
+#LIBS=src/libmemcuv.a -luv
+LIBS=src/libmemcuv.a libuv/build/Debug/libuv.a -framework CoreFoundation -framework CoreServices
 HDRS:=$(wildcard src/*.h)
 SRCS:=$(wildcard src/*.cpp)
 #SRCS:=$(filter-out $(EXCLUDES), $(SRCS))

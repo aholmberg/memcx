@@ -23,8 +23,7 @@ void memcx::Init(const std::string& host,
     throw runtime_error("memcx::Init already initialized");
   }
  
-//TODO: pool size
-  client = new memcuv::MemcacheUv(host, port);
+  client = new memcuv::MemcacheUv(host, port, pool_size);
 }
 
 void memcx::Shutdown() {
@@ -44,11 +43,11 @@ void VerifyInit(const char* function) {
   }
 }
   
-void memcx::SetSync(const string &key, const string& value) {
+void memcx::SetSync(const string &key, const string& value, const std::chrono::milliseconds& timeout) {
   VerifyInit(__FUNCTION__);
   SetRequestAsync* req = new SetRequestAsync(key, value);
   future<void> set_future = req->GetFuture();
   //client->SendSet(static_cast<SetRequest*>(req));
-  client->SendSet(unique_ptr<SetRequest>(req));
+  client->SendSet(unique_ptr<SetRequest>(req), timeout);
   set_future.get();
 }

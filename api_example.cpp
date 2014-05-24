@@ -11,6 +11,7 @@ int main(const int argc, const char* argv[]) {
     for (int i = 1; i < 1000; ++i) {
       memcx::SetSync(to_string(i), to_string(i));
     }
+    memcx::Shutdown();
     cout << "success\n";
   } catch(exception& e) {
     cerr << "exception: " << e.what() << endl;

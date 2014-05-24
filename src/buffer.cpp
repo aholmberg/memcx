@@ -3,6 +3,8 @@
 using std::copy;
 using std::string;
 
+#include <iostream>
+
 using namespace memcx;
 
 const char* Buffer::ENDL = "\r\n";
