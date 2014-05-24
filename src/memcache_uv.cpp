@@ -1,42 +1,31 @@
 #include "memcache_uv.h"
-#include <uv.h>
-
-#include <chrono>
-using std::chrono::milliseconds;
 
 #include <exception>
+using std::exception;
 using std::runtime_error;
-
-#include <iostream>
-using std::cout;
-using std::cerr;
-using std::endl;
-
-#include <memory>
-using std::unique_ptr;
-
 #include <functional>
 using std::bind;
 using std::placeholders::_1;
-
-using std::unique_lock;
-using std::mutex;
-
-using std::string;
-using std::thread;
-using std::future;
-
-using std::exception;
-
+#include <memory>
+using std::unique_ptr;
 #include <utility>
 using std::move;
 
+using std::chrono::milliseconds;
+using std::future;
+using std::mutex;
+using std::string;
+using std::thread;
+using std::unique_lock;
+
+#include <uv.h>
+
 using namespace memcx::memcuv;
 
-MemcacheUv::MemcacheUv(const string& host, const int port, const size_t pool_size) {
-
+MemcacheUv::MemcacheUv(const string& host, 
+                       const int port, 
+                       const size_t pool_size) {
   live_connections_ = 0;
-
   loop_ = uv_loop_new();
   endpoint_ = uv_ip4_addr(host.c_str(), port);
   UvConnection::ConnectionCallback cb(bind(&MemcacheUv::ConnectEvent, this, _1));
@@ -56,7 +45,24 @@ MemcacheUv::~MemcacheUv() {
   uv_loop_delete(loop_);
 }
 
-void MemcacheUv::SendRequestSync(unique_ptr<Request> req, const milliseconds& timeout) {
+void MemcacheUv::SendRequestAsync(unique_ptr<Request> req) {
+  unique_lock<mutex> l(wait_lock_);
+  if (live_connections_ > 0) {
+    try {
+      ConnectionIter connection = NextOpenConnection();
+      cursor_->SubmitRequest(move(req));
+    } catch(exception& e) {
+      req->error_msg(e.what());
+      req->Notify();
+    }
+  } else {
+    req->error_msg("No connections available");
+    req->Notify();
+  }
+}
+
+void MemcacheUv::SendRequestSync(unique_ptr<Request> req, 
+                                 const milliseconds& timeout) {
   unique_lock<mutex> l(wait_lock_);
   if (connect_condition_.wait_for(l, timeout, [this](){ return live_connections_ > 0; })) {
     try {
@@ -69,6 +75,25 @@ void MemcacheUv::SendRequestSync(unique_ptr<Request> req, const milliseconds& ti
   } else {
     req->error_msg("Connection timeout");
     req->Notify();
+  }
+}
+
+void MemcacheUv::ConnectEvent(UvConnection* connection) {
+  unique_lock<mutex> l(wait_lock_);
+  if (connection->connected()) {
+    ++live_connections_;
+  } else {
+    if (live_connections_ > 0) {
+      --live_connections_;
+    }
+  }
+  connect_condition_.notify_all();
+}
+
+void MemcacheUv::WaitConnect(const milliseconds& timeout) {
+  unique_lock<mutex> l(wait_lock_);
+  if (!connect_condition_.wait_for(l, timeout, [this](){ return live_connections_ > 0; })) {
+    throw runtime_error("Connection timeout");
   }
 }
 
@@ -95,48 +120,13 @@ ConnectionIter MemcacheUv::NextOpenConnection() {
   return connection;
 }
 
-void MemcacheUv::SendRequestAsync(unique_ptr<Request> req) {
-  unique_lock<mutex> l(wait_lock_);
-  if (live_connections_ > 0) {
-    try {
-      ConnectionIter connection = NextOpenConnection();
-      cursor_->SubmitRequest(move(req));
-    } catch(exception& e) {
-      req->error_msg(e.what());
-      req->Notify();
-    }
-  } else {
-    req->error_msg("No connections available");
-    req->Notify();
-  }
-}
-
-void MemcacheUv::ConnectEvent(UvConnection* connection) {
-  unique_lock<mutex> l(wait_lock_);
-  if (connection->connected()) {
-    ++live_connections_;
-  } else {
-    if (live_connections_ > 0) {
-      --live_connections_;
-    }
-  }
-  connect_condition_.notify_all();
-}
-
-void MemcacheUv::WaitConnect(const std::chrono::milliseconds& timeout) {
-  unique_lock<mutex> l(wait_lock_);
-  if (!connect_condition_.wait_for(l, timeout, [this](){ return live_connections_ > 0; })) {
-    throw runtime_error("Connection timeout");
-  }
-}
-
 void MemcacheUv::LoopThread() {
   uv_run(loop_, UV_RUN_DEFAULT);
 }
 
 void MemcacheUv::Shutdown(uv_async_t* handle, int status) {
   MemcacheUv* ths = static_cast<MemcacheUv*>(handle->data);
-  uv_close(reinterpret_cast<uv_handle_t*>(handle), NULL);
+  uv_close(reinterpret_cast<uv_handle_t*>(handle), NULL);//TODO: need to delete?
   for (UvConnection& c : ths->connections_) {
     c.Close("shutdown");
   }

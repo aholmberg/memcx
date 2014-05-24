@@ -2,13 +2,12 @@
 #define UV_CONNECTION_H
 
 #include <netinet/in.h>
-#include <mutex>
-#include <condition_variable>
-#include <queue>
-#include <uv.h>
-#include "request.h"
-#include "buffer.h"
+
 #include <memory>
+#include <queue>
+
+#include "buffer.h"
+#include "request.h"
 
 namespace memcx {
 
@@ -25,25 +24,15 @@ public:
   UvConnection(uv_loop_t *loop,
                const struct sockaddr_in &endpoint,
                const ConnectionCallback& connect_callback);
-  virtual ~UvConnection();
-//TODO: effective c++
+  ~UvConnection();
+  UvConnection(const UvConnection&) = delete;
+  UvConnection& operator=(const UvConnection&) = delete;
 
-//  void WaitOnConnect();
+  void Close(const std::string& message);
+
+  void SubmitRequest(std::unique_ptr<Request> request);
 
   bool connected() { return connected_; }
-
-/*
-  const std::string& connect_err() { return connect_err_; }
-*/
-  void SubmitRequest(std::unique_ptr<Request> request);
-/*
-  void SetSync(const std::string &key, const std::string &value);
-  void SetAsync(const std::string &key, const std::string &value, int callback);
-
-  std::string GetSync(const std::string &key);
-  void GetAsync(const std::string &key, int callback);
-*/
-  void Close(const std::string& message);
 
 private:
   void Connect();
@@ -56,28 +45,21 @@ private:
   uv_stream_t* socket_stream() { return reinterpret_cast<uv_stream_t*>(socket_); }
   uv_handle_t* socket_handle() { return reinterpret_cast<uv_handle_t*>(socket_); }
 
-  static void OnCloseSocket(uv_handle_t* socket);
-  static void OnCloseAsync(uv_handle_t* async);
-  static void OnCloseTimer(uv_handle_t* timer);
+  static void OnConnect(uv_connect_t *req, int status);
   static void Reconnect(uv_timer_t* handle, int status);
   static void WriteRequest(uv_async_t* handle, int status);
-  static void OnConnect(uv_connect_t *req, int status);
   static void OnWrite(uv_write_t *req, int status);
-  static void OnRead(uv_stream_t* stream, ssize_t nread, uv_buf_t buf);
   static uv_buf_t GetBuffer(uv_handle_t* handle, size_t suggested_size);
+  static void OnRead(uv_stream_t* stream, ssize_t nread, uv_buf_t buf);
 
-  RequestQueue requests_;
   Buffer buffer_;
-  uv_tcp_t* socket_;
-  bool connected_;
-  uv_loop_t* loop_;
-  struct sockaddr_in endpoint_;
-/*
-  std::mutex wait_lock_;
-  std::condition_variable connect_condition_;
-*/
-  std::string connect_err_;
   ConnectionCallback connect_callback_;
+  std::string connect_err_;
+  bool connected_;
+  struct sockaddr_in endpoint_;
+  uv_loop_t* loop_;
+  RequestQueue requests_;
+  uv_tcp_t* socket_;
 };
 
 }

@@ -1,6 +1,7 @@
 #include "memcx.h"
 
 #include <exception>
+using std::invalid_argument;
 using std::runtime_error;
 #include <future>
 using std::future;
@@ -8,6 +9,10 @@ using std::future;
 using std::unique_ptr;
 #include <string>
 using std::string;
+#include <sstream>
+using std::stringstream;
+
+using std::chrono::milliseconds;
 
 #include "memcache_uv.h"
 
@@ -16,10 +21,10 @@ using namespace memcx;
 static memcuv::MemcacheUv* client = nullptr;
 
 void memcx::Init(
-     const std::string& host,
+     const string& host,
      const int port,
      const size_t pool_size, 
-     const std::chrono::milliseconds& timeout) {
+     const milliseconds& timeout) {
 
   if (IsInit()) {
     throw runtime_error("memcx::Init already initialized");
@@ -40,37 +45,49 @@ bool memcx::IsInit() {
   return client != nullptr;
 }
 
-void VerifyInit(const char* function) {
+void Validate(const string& key, const char* function) {
   if (!IsInit()) {
     throw runtime_error(string(function) + " called before Init");
   }
+
+  if (key.empty() || key.size() > MAX_KEY_LEN) {
+    stringstream ss;
+    ss << "Invalid key: \"" << key << "\"; size must be [1," << MAX_KEY_LEN << "]";
+    throw invalid_argument(ss.str());
+  }
 }
   
-void memcx::SetSync(const string &key, const string& value, const std::chrono::milliseconds& timeout) {
-  VerifyInit(__FUNCTION__);//TODO: guard too-long and zero-length keys
+void memcx::SetSync(const string& key, 
+                    const string& value, 
+                    const milliseconds& timeout) {
+  Validate(key, __FUNCTION__);//TODO: guard too-long and zero-length keys
   SetRequestAsync* req = new SetRequestAsync(key, value);
   future<void> set_future = req->GetFuture();
   client->SendRequestSync(unique_ptr<SetRequest>(req), timeout);
   set_future.get();
 }
 
-void memcx::SetAsync(const string &key, const string& value, SetCallback callback, const std::chrono::milliseconds& timeout) {
-  VerifyInit(__FUNCTION__);
+void memcx::SetAsync(const string& key, 
+                     const string& value, 
+                     const SetCallback& callback, 
+                     const milliseconds& timeout) {
+  Validate(key, __FUNCTION__);
   SetRequest* req = new SetRequest(key, value, callback);
   client->SendRequestAsync(unique_ptr<SetRequest>(req));
 }
 
-string memcx::GetSync(const std::string &key, const std::chrono::milliseconds& timeout) {
-  VerifyInit(__FUNCTION__);
+string memcx::GetSync(const string& key, const milliseconds& timeout) {
+  Validate(key, __FUNCTION__);
   GetRequestAsync* req = new GetRequestAsync(key);
   future<string> get_future = req->GetFuture();
   client->SendRequestSync(unique_ptr<GetRequest>(req), timeout);
   return get_future.get();
 }
 
-void memcx::GetAsync(const std::string &key, GetCallback callback, const std::chrono::milliseconds& timeout) {
-  VerifyInit(__FUNCTION__);
+void memcx::GetAsync(const string& key, 
+                     const GetCallback& callback, 
+                     const milliseconds& timeout) {
+  Validate(key, __FUNCTION__);
   GetRequest* req = new GetRequest(key, callback);
   client->SendRequestAsync(unique_ptr<GetRequest>(req));
 }
-

@@ -2,10 +2,11 @@
 #define MEMCACHE_UV_H
 
 #include <netinet/in.h>
+
+#include <chrono>
+#include <list>
 #include <string>
 #include <thread>
-#include <list>
-#include <chrono>
 
 #include "uv_connection.h"
 
@@ -17,34 +18,41 @@ namespace memcuv {
 
 typedef std::list<UvConnection> ConnectionList;
 typedef std::list<UvConnection>::iterator ConnectionIter;
-//TODO: define get/set callback types
+
 class MemcacheUv {
 
 public:
   MemcacheUv(const std::string& host,
              const int port,
              const size_t pool_size);
+  MemcacheUv(const MemcacheUv&) = delete;
+  MemcacheUv& operator=(const MemcacheUv&) = delete;
   ~MemcacheUv();
 
-  void SendRequestSync(std::unique_ptr<Request> request, const std::chrono::milliseconds& timeout);
   void SendRequestAsync(std::unique_ptr<Request> request);
+  void SendRequestSync(std::unique_ptr<Request> request, 
+                       const std::chrono::milliseconds& timeout);
   void WaitConnect(const std::chrono::milliseconds& timeout);
 
 private:
-  ConnectionIter NextOpenConnection();
   void ConnectEvent(UvConnection* connection);
+  ConnectionIter NextOpenConnection();
   void LoopThread();
   static void Shutdown(uv_async_t* handle, int status);
-  static void OnCloseAsync(uv_handle_t* async);
 
+  struct sockaddr_in endpoint_;
   uv_loop_t* loop_;
   std::thread loop_thread_;
-  struct sockaddr_in endpoint_;
-  ConnectionList connections_;
+
+  //----
   std::mutex wait_lock_;
   std::condition_variable connect_condition_;
-  size_t live_connections_;
+  //vvvvv
+  ConnectionList connections_;
   ConnectionIter cursor_;
+  size_t live_connections_;
+  //^^^^^
+  //----
 };
 
 }
