@@ -26,6 +26,8 @@ using std::string;
 using std::thread;
 using std::future;
 
+using std::exception;
+
 #include <utility>
 using std::move;
 
@@ -54,30 +56,58 @@ MemcacheUv::~MemcacheUv() {
   uv_loop_delete(loop_);
 }
 
-void MemcacheUv::SendSet(unique_ptr<SetRequest> req, const milliseconds& timeout) {
+void MemcacheUv::SendRequestSync(unique_ptr<Request> req, const milliseconds& timeout) {
   unique_lock<mutex> l(wait_lock_);
   if (connect_condition_.wait_for(l, timeout, [this](){ return live_connections_ > 0; })) {
-    ConnectionIter start = cursor_;
-    while (!cursor_->connected()) {
-      ++cursor_;
-      if (cursor_ == connections_.end()) {
-        cursor_ = connections_.begin();
-      }
-      if (cursor_ == start) {
-        break;
-      }
-    }
-    if (cursor_->connected()) {
+    try {
+      ConnectionIter connection = NextOpenConnection();
       cursor_->SubmitRequest(move(req));
-      ++cursor_;
-      if (cursor_ == connections_.end()) {
-        cursor_ = connections_.begin();
-      }
-    } else {
-      throw runtime_error("Failed to find open connection");
+    } catch(exception& e) {
+      req->error_msg(e.what());
+      req->Notify();
     }
   } else {
-    throw runtime_error("Connection timeout");
+    req->error_msg("Connection timeout");
+    req->Notify();
+  }
+}
+
+ConnectionIter MemcacheUv::NextOpenConnection() {
+  ConnectionIter start = cursor_;
+  while (!cursor_->connected()) {
+    ++cursor_;
+    if (cursor_ == connections_.end()) {
+      cursor_ = connections_.begin();
+    }
+    if (cursor_ == start) {
+      break;
+    }
+  }
+
+  if (!cursor_->connected()) {
+    throw runtime_error("Failed to find open connection");
+  }
+
+  ConnectionIter connection = cursor_;
+  if (++cursor_ == connections_.end()) {
+    cursor_ = connections_.begin();
+  }
+  return connection;
+}
+
+void MemcacheUv::SendRequestAsync(unique_ptr<Request> req) {
+  unique_lock<mutex> l(wait_lock_);
+  if (live_connections_ > 0) {
+    try {
+      ConnectionIter connection = NextOpenConnection();
+      cursor_->SubmitRequest(move(req));
+    } catch(exception& e) {
+      req->error_msg(e.what());
+      req->Notify();
+    }
+  } else {
+    req->error_msg("No connections available");
+    req->Notify();
   }
 }
 
@@ -93,12 +123,12 @@ void MemcacheUv::ConnectEvent(UvConnection* connection) {
   connect_condition_.notify_all();
 }
 
-/*
-void MemcacheUv::WaitConnect() {
+void MemcacheUv::WaitConnect(const std::chrono::milliseconds& timeout) {
   unique_lock<mutex> l(wait_lock_);
-  connect_condition_.wait(l, [this](){ return live_connections_ > 0; });
+  if (!connect_condition_.wait_for(l, timeout, [this](){ return live_connections_ > 0; })) {
+    throw runtime_error("Connection timeout");
+  }
 }
-*/
 
 void MemcacheUv::LoopThread() {
   uv_run(loop_, UV_RUN_DEFAULT);

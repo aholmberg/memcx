@@ -26,14 +26,12 @@ public:
              const size_t pool_size);
   ~MemcacheUv();
 
-  void SendSet(std::unique_ptr<SetRequest> request, const std::chrono::milliseconds& timeout);
-//  void SetAsync(const std::string &key, const std::string &value, int callback);
-
-//  std::string GetSync(const std::string &key);
-//  void GetAsync(const std::string &key, int callback);
-//  void WaitConnect();
+  void SendRequestSync(std::unique_ptr<Request> request, const std::chrono::milliseconds& timeout);
+  void SendRequestAsync(std::unique_ptr<Request> request);
+  void WaitConnect(const std::chrono::milliseconds& timeout);
 
 private:
+  ConnectionIter NextOpenConnection();
   void ConnectEvent(UvConnection* connection);
   void LoopThread();
   static void Shutdown(uv_async_t* handle, int status);

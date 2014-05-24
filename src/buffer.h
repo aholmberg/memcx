@@ -19,7 +19,8 @@ public:
 
   void MarkNewBytesRead(size_t size);
 
-  size_t TryReadLine(std::string& line);
+  size_t ReadLine(std::string& line);
+  size_t ReadBytes(size_t count, std::string& dest);
 
 private:
 //  Buffer(const Buffer&);

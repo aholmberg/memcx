@@ -70,6 +70,7 @@ void UvConnection::SubmitRequest(unique_ptr<Request> request) {
 }
 
 void UvConnection::WriteRequest(uv_async_t* handle, int status) {
+  //TODO: guard not connected
   unique_ptr<Request> request(static_cast<Request*>(handle->data));
   uv_close(reinterpret_cast<uv_handle_t*>(handle), UvConnection::OnCloseAsync);
 

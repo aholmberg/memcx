@@ -1,9 +1,9 @@
 #include "buffer.h"
-#include <algorithm>
-using std::copy;
 using std::string;
 
-#include <iostream>
+#include <algorithm>
+using std::copy;
+using std::min;
 
 using namespace memcx;
 
@@ -39,7 +39,7 @@ void Buffer::MarkNewBytesRead(size_t size) {
   buffer_[current_size_] = '\0';
 }
 
-size_t Buffer::TryReadLine(string& line) {
+size_t Buffer::ReadLine(string& line) {
   size_t chars_read = 0;
   line.clear();
   char* end = strstr(read_cursor_, ENDL);
@@ -50,5 +50,13 @@ size_t Buffer::TryReadLine(string& line) {
     read_cursor_ += chars_read;
   }
 //TODO: add a note to docs about guarding too-long keys
+  return chars_read;
+}
+
+size_t Buffer::ReadBytes(size_t count, string& dest) {
+  size_t bytes_available = buffer_ + current_size_ - read_cursor_;
+  size_t chars_read = min(count, bytes_available);
+  dest.append(read_cursor_, chars_read);
+  read_cursor_ += chars_read;
   return chars_read;
 }

@@ -7,6 +7,8 @@
 #include <string>
 #include <uv.h>
 
+#include "memcx.h"
+
 namespace memcx {
 
 class Request;
@@ -18,8 +20,6 @@ class Request {
 public:
   Request(const std::string& command);
   virtual ~Request();
-
-//  size_t TryReadLine(const std::string& buffer, ssize_t offset);
 
   virtual size_t Ingest(Buffer& buffer) = 0;
   
@@ -48,10 +48,8 @@ private:
 
 class SetRequest: public Request {
 
-typedef std::function<void(std::string error)> SetCallback;
-
 public:
-  SetRequest(const std::string& key, const std::string& value, SetCallback callback, unsigned int flags = 0, unsigned int exp_time = 0);
+  SetRequest(const std::string& key, const std::string& value, memcx::SetCallback callback, unsigned int flags = 0, unsigned int exp_time = 0);
   virtual ~SetRequest();
 
   virtual size_t Ingest(Buffer& buffer);
@@ -60,7 +58,7 @@ public:
 
   static std::string CommandFromParams(const std::string& key, const std::string& value, unsigned int flags, unsigned int exp_time);
 private:
-  SetCallback callback_;
+  memcx::SetCallback callback_;
 };
 
 class SetRequestAsync: public SetRequest {
@@ -70,28 +68,47 @@ public:
 
   std::future<void> GetFuture() { return promise_.get_future(); }
 
-  void SetValue(std::string error);
+  void SetResponse(const std::string& error);
 
 private:
   std::promise<void> promise_;
 };
 
-/*
-class SetRequestAsync: SetRequest {
-//typedef std::function<void(bool, std::string error_message)> SetCallback;
-};
-*/
-
 class GetRequest: public Request {
 
+enum ResponseState { PENDING_RESPONSE, HEADER_PARSED, VALUE_COMPLETE };
+
 public:
-  GetRequest(const std::string& key);
+  GetRequest(const std::string& key, memcx::GetCallback callback);
 
   virtual size_t Ingest(Buffer& buffer);
 
-//  virtual void Notify();
+  virtual void Notify();
 
   static std::string CommandFromKey(const std::string& key);
+
+private:
+  void ParseHeader(const std::string& header);
+
+  enum ResponseState response_state_;
+  std::string value_;
+  size_t expected_size_;
+  unsigned long int flags_;
+  memcx::GetCallback callback_;
 };
+
+class GetRequestAsync: public GetRequest {
+public:
+  GetRequestAsync(const std::string& key);
+  virtual ~GetRequestAsync() = default;
+
+  std::future<std::string> GetFuture() { return promise_.get_future(); }
+
+  void SetResponse(const std::string& value, const std::string& error);
+
+private:
+  std::promise<std::string> promise_;
+};
+
 }
 #endif
