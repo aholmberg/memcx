@@ -5,7 +5,7 @@ CFLAGS=-g -fPIC -std=c++11
 DEFS=
 INCL=-I../src
 LIBS=-luv -lcppunit
-EXCLUDES:=
+EXCLUDES:=tput.cpp
 HDRS:=$(wildcard *.h)
 SRCS:=$(wildcard *.cpp)
 TESTS_SRC:=$(filter-out $(EXCLUDES), $(SRCS))

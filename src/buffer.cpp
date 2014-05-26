@@ -45,7 +45,7 @@ size_t Buffer::ReadLine(string& line) {
   size_t chars_read = 0;
   line.clear();
   char* end = strstr(read_cursor_, ENDL);
-  if (end != NULL) {
+  if (end != nullptr) {
     size_t span = end - read_cursor_;
     line.append(read_cursor_, span);
     chars_read = span + ENDL_LEN;

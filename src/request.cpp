@@ -39,14 +39,14 @@ size_t SetRequest::Ingest(Buffer& buffer) {
       set_complete(true);
       break;
     } else if (line == "ERROR") {
-      error_msg("memcached: ERROR");
+      set_error_msg("memcached: ERROR");
       set_complete(true);
       break;
     } else if (line.empty()) {
   // empty lines are eaten, as they are errors from previous commands
   // (e.g.: send a line with set *too-long key* with flag, exp, bytes)
     } else {
-      error_msg(line);
+      set_error_msg(line);
     }
   }
   return read_count_total;
@@ -101,8 +101,10 @@ size_t GetRequest::Ingest(Buffer& buffer) {
         if (line.find("VALUE") == 0) {
           ParseHeader(line);
           response_state_ = HEADER_PARSED;
+        } else if (line == "END") {
+          set_complete(true);
         } else {
-          error_msg(line);
+          set_error_msg("memcached: " + line);
           set_complete(true);
         }
       }
@@ -118,10 +120,13 @@ size_t GetRequest::Ingest(Buffer& buffer) {
 
     case VALUE_COMPLETE:
       if ((read_count = buffer.ReadLine(line)) > 0) {
-        if (line == "END") {
+        read_count_total += read_count;
+        if (line.empty()) {
+          // empty line is endl following value bytes
+        } else if (line == "END") {
           set_complete(true); 
-        } else if (!line.empty()) {//endl following value bytes
-          error_msg("unexpected response: " + line);
+        } else {
+          set_error_msg("unexpected response: " + line);
           set_complete(true);
         }
       }
@@ -129,7 +134,7 @@ size_t GetRequest::Ingest(Buffer& buffer) {
     default://complete
       break;
     }
-  } while(read_count > 0);
+  } while(read_count > 0 && !complete());
   return read_count_total;
 }
 

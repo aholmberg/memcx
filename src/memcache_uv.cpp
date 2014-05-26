@@ -52,11 +52,11 @@ void MemcacheUv::SendRequestAsync(unique_ptr<Request> req) {
       ConnectionIter connection = NextOpenConnection();
       cursor_->SubmitRequest(move(req));
     } catch(exception& e) {
-      req->error_msg(e.what());
+      req->set_error_msg(e.what());
       req->Notify();
     }
   } else {
-    req->error_msg("No connections available");
+    req->set_error_msg("No connections available");
     req->Notify();
   }
 }
@@ -69,11 +69,11 @@ void MemcacheUv::SendRequestSync(unique_ptr<Request> req,
       ConnectionIter connection = NextOpenConnection();
       cursor_->SubmitRequest(move(req));
     } catch(exception& e) {
-      req->error_msg(e.what());
+      req->set_error_msg(e.what());
       req->Notify();
     }
   } else {
-    req->error_msg("Connection timeout");
+    req->set_error_msg("Connection timeout");
     req->Notify();
   }
 }

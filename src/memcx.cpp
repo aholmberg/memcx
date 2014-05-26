@@ -55,12 +55,18 @@ void Validate(const string& key, const char* function) {
     ss << "Invalid key: \"" << key << "\"; size must be [1," << MAX_KEY_LEN << "]";
     throw invalid_argument(ss.str());
   }
+ 
+  if (key.find(' ') != string::npos) {
+    stringstream ss;
+    ss << "Invalid key: \"" << key << "\"; whitespace is not supported";
+    throw invalid_argument(ss.str());
+  }
 }
   
 void memcx::SetSync(const string& key, 
                     const string& value, 
                     const milliseconds& timeout) {
-  Validate(key, __FUNCTION__);//TODO: guard too-long and zero-length keys
+  Validate(key, __FUNCTION__);
   SetRequestAsync* req = new SetRequestAsync(key, value);
   future<void> set_future = req->GetFuture();
   client->SendRequestSync(unique_ptr<SetRequest>(req), timeout);

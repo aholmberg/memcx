@@ -39,7 +39,7 @@ void UvConnection::Close(const string& message) {
 
   while (requests_.size()) {
     Request* req = requests_.front();
-    req->error_msg(message);
+    req->set_error_msg(message);
     req->Notify();
     requests_.pop();
   }
@@ -94,32 +94,40 @@ void UvConnection::Reset(const char* context) {
 void UvConnection::Reconnect(uv_timer_t* handle, int status) {
   UvConnection* ths = static_cast<UvConnection*>(handle->data);
   uv_timer_stop(handle);
+  //TODO
   //uv_close(reinterpret_cast<uv_handle_t*>(handle), OnCloseHandle<uv_timer_t>);
   ths->Connect();
 }
 
 void UvConnection::SubmitRequest(unique_ptr<Request> request) {
+//TODO: this mechanism broken
   uv_async_t* async = new uv_async_t();
-  uv_async_init(loop_, async, UvConnection::WriteRequest);
   request->set_data(this);
   async->data = request.release();
-  uv_async_send(async);
 }
 
 void UvConnection::WriteRequest(uv_async_t* handle, int status) {
-  //TODO: guard not connected
   unique_ptr<Request> request(static_cast<Request*>(handle->data));
   uv_close(reinterpret_cast<uv_handle_t*>(handle), OnCloseHandle<uv_async_t>);
+
+  UvConnection* ths = static_cast<UvConnection*>(request->data());
+  if (!ths->connected()) {
+    request->set_error_msg("connection closed");
+    request->Notify();
+    return;
+  }
 
   const string& cmd = request->command();
   uv_buf_t write_buffer = uv_buf_init(const_cast<char*>(cmd.data()), cmd.size());
   uv_write_t* write_req = new uv_write_t();
   write_req->data = request.get();
 
-  UvConnection* ths = static_cast<UvConnection*>(request->data());
   int r = uv_write(write_req, ths->socket_stream(), &write_buffer, 1, UvConnection::OnWrite);
   if (r != 0) {
+    request->set_error_msg("write init failed");
+    request->Notify();
     ths->Reset("tcp write initiation error");
+    return;
   }
   request.release();
 }
@@ -128,8 +136,8 @@ void UvConnection::OnWrite(uv_write_t *req, int status) {
   unique_ptr<uv_write_t> write_req(req);
   unique_ptr<Request> request(static_cast<Request*>(write_req->data));
   if (status != 0) {
-    //TODO:
-    request->Notify(/*err*/);
+    request->set_error_msg("write failed");
+    request->Notify();
     return;
   }
   UvConnection* ths = static_cast<UvConnection*>(request->data());
@@ -155,8 +163,6 @@ void UvConnection::OnRead(uv_stream_t* req, ssize_t nread, uv_buf_t buf) {
 void UvConnection::ProcessData() {
   while (!requests_.empty()) {
     Request* req = requests_.front();
-//TODO: possibly switch this conditional order
-//TODO: maybe only process if new data since last Ingest/tryreadline
     if (req->Ingest(buffer_) > 0) {
       if (req->complete()) {
         req->Notify();

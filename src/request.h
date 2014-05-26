@@ -31,7 +31,7 @@ public:
   void set_data(void* data) { data_ = data; }
 
   const std::string&  error_msg() { return error_msg_; }
-  void error_msg(const std::string& msg) { error_msg_ = error_msg_.empty() ? msg : error_msg_; }
+  void set_error_msg(const std::string& msg) { error_msg_ = error_msg_.empty() ? msg : error_msg_; }
   bool IsError() { return !error_msg_.empty(); }
 
 private:
