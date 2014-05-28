@@ -27,7 +27,14 @@ MemcacheUv::MemcacheUv(const string& host,
                        const size_t pool_size) {
   live_connections_ = 0;
   loop_ = uv_loop_new();
-  endpoint_ = uv_ip4_addr(host.c_str(), port);
+
+  uv_async_init(loop_, &request_async_, SendNewMessages);
+  request_async_.data = this;
+
+  uv_async_init(loop_, &shutdown_async_, Shutdown);
+  shutdown_async_.data = this;
+
+  struct sockaddr_in endpoint_ = uv_ip4_addr(host.c_str(), port);
   UvConnection::ConnectionCallback cb(bind(&MemcacheUv::ConnectEvent, this, _1));
   for (size_t i = 0; i < pool_size; ++i) {
     connections_.emplace_back(loop_, endpoint_, cb);
@@ -37,44 +44,37 @@ MemcacheUv::MemcacheUv(const string& host,
 }
 
 MemcacheUv::~MemcacheUv() {
-  uv_async_t* async = new uv_async_t();
-  uv_async_init(loop_, async, MemcacheUv::Shutdown);
-  async->data = this;
-  uv_async_send(async);
+  uv_close(reinterpret_cast<uv_handle_t*>(&request_async_), nullptr);
+  uv_async_send(&shutdown_async_);
   loop_thread_.join();
   uv_loop_delete(loop_);
 }
 
-void MemcacheUv::SendRequestAsync(unique_ptr<Request> req) {
-  unique_lock<mutex> l(wait_lock_);
-  if (live_connections_ > 0) {
-    try {
-      ConnectionIter connection = NextOpenConnection();
-      cursor_->SubmitRequest(move(req));
-    } catch(exception& e) {
-      req->set_error_msg(e.what());
-      req->Notify();
-    }
-  } else {
-    req->set_error_msg("No connections available");
-    req->Notify();
+void MemcacheUv::SendRequest(unique_ptr<Request> req) {
+  {
+    unique_lock<mutex> l(wait_lock_);
+    new_requests_.push(req.release());
   }
+
+  NewMessageAsync();
 }
 
-void MemcacheUv::SendRequestSync(unique_ptr<Request> req, 
-                                 const milliseconds& timeout) {
-  unique_lock<mutex> l(wait_lock_);
-  if (connect_condition_.wait_for(l, timeout, [this](){ return live_connections_ > 0; })) {
+void MemcacheUv::NewMessageAsync() {
+  uv_async_send(&request_async_);
+}
+
+void MemcacheUv::SendNewMessages(uv_async_t* async, int status) {
+  if (status == 0) {
+    MemcacheUv* ths = static_cast<MemcacheUv*>(async->data);
+    unique_lock<mutex> l(ths->wait_lock_);
     try {
-      ConnectionIter connection = NextOpenConnection();
-      cursor_->SubmitRequest(move(req));
+      while (!ths->new_requests_.empty()) {
+        ConnectionIter connection = ths->NextOpenConnection();
+        connection->WriteRequest(unique_ptr<Request>(ths->new_requests_.front()));
+        ths->new_requests_.pop();
+      }
     } catch(exception& e) {
-      req->set_error_msg(e.what());
-      req->Notify();
     }
-  } else {
-    req->set_error_msg("Connection timeout");
-    req->Notify();
   }
 }
 
@@ -82,6 +82,9 @@ void MemcacheUv::ConnectEvent(UvConnection* connection) {
   unique_lock<mutex> l(wait_lock_);
   if (connection->connected()) {
     ++live_connections_;
+    if (!new_requests_.empty()) {
+      NewMessageAsync();
+    }
   } else {
     if (live_connections_ > 0) {
       --live_connections_;
@@ -126,7 +129,7 @@ void MemcacheUv::LoopThread() {
 
 void MemcacheUv::Shutdown(uv_async_t* handle, int status) {
   MemcacheUv* ths = static_cast<MemcacheUv*>(handle->data);
-  uv_close(reinterpret_cast<uv_handle_t*>(handle), NULL);//TODO: need to delete?
+  uv_close(reinterpret_cast<uv_handle_t*>(handle), NULL);
   for (UvConnection& c : ths->connections_) {
     c.Close("shutdown");
   }

@@ -69,7 +69,7 @@ void memcx::SetSync(const string& key,
   Validate(key, __FUNCTION__);
   SetRequestAsync* req = new SetRequestAsync(key, value);
   future<void> set_future = req->GetFuture();
-  client->SendRequestSync(unique_ptr<SetRequest>(req), timeout);
+  client->SendRequest(unique_ptr<SetRequest>(req));
   set_future.get();
 }
 
@@ -79,14 +79,14 @@ void memcx::SetAsync(const string& key,
                      const milliseconds& timeout) {
   Validate(key, __FUNCTION__);
   SetRequest* req = new SetRequest(key, value, callback);
-  client->SendRequestAsync(unique_ptr<SetRequest>(req));
+  client->SendRequest(unique_ptr<SetRequest>(req));
 }
 
 string memcx::GetSync(const string& key, const milliseconds& timeout) {
   Validate(key, __FUNCTION__);
   GetRequestAsync* req = new GetRequestAsync(key);
   future<string> get_future = req->GetFuture();
-  client->SendRequestSync(unique_ptr<GetRequest>(req), timeout);
+  client->SendRequest(unique_ptr<GetRequest>(req));
   return get_future.get();
 }
 
@@ -95,5 +95,5 @@ void memcx::GetAsync(const string& key,
                      const milliseconds& timeout) {
   Validate(key, __FUNCTION__);
   GetRequest* req = new GetRequest(key, callback);
-  client->SendRequestAsync(unique_ptr<GetRequest>(req));
+  client->SendRequest(unique_ptr<GetRequest>(req));
 }

@@ -29,18 +29,17 @@ public:
   MemcacheUv& operator=(const MemcacheUv&) = delete;
   ~MemcacheUv();
 
-  void SendRequestAsync(std::unique_ptr<Request> request);
-  void SendRequestSync(std::unique_ptr<Request> request, 
-                       const std::chrono::milliseconds& timeout);
+  void SendRequest(std::unique_ptr<Request> req);
   void WaitConnect(const std::chrono::milliseconds& timeout);
 
 private:
   void ConnectEvent(UvConnection* connection);
   ConnectionIter NextOpenConnection();
   void LoopThread();
+  void NewMessageAsync();
+  static void SendNewMessages(uv_async_t* handle, int status);
   static void Shutdown(uv_async_t* handle, int status);
 
-  struct sockaddr_in endpoint_;
   uv_loop_t* loop_;
   std::thread loop_thread_;
 
@@ -48,11 +47,15 @@ private:
   std::mutex wait_lock_;
   std::condition_variable connect_condition_;
   //vvvvv
+  RequestQueue new_requests_;
   ConnectionList connections_;
   ConnectionIter cursor_;
   size_t live_connections_;
   //^^^^^
   //----
+
+  uv_async_t request_async_;
+  uv_async_t shutdown_async_;
 };
 
 }

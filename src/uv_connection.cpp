@@ -33,9 +33,9 @@ void UvConnection::Close(const string& message) {
   if (socket_ != nullptr) {
     uv_read_stop(socket_stream());
     uv_close(socket_handle(), OnCloseHandle<uv_tcp_t>);
+    socket_ = nullptr;
   }
   connected_ = false;
-  socket_ = nullptr;
 
   while (requests_.size()) {
     Request* req = requests_.front();
@@ -94,39 +94,23 @@ void UvConnection::Reset(const char* context) {
 void UvConnection::Reconnect(uv_timer_t* handle, int status) {
   UvConnection* ths = static_cast<UvConnection*>(handle->data);
   uv_timer_stop(handle);
-  //TODO
-  //uv_close(reinterpret_cast<uv_handle_t*>(handle), OnCloseHandle<uv_timer_t>);
+  uv_close(reinterpret_cast<uv_handle_t*>(handle), OnCloseHandle<uv_timer_t>);
   ths->Connect();
 }
 
-void UvConnection::SubmitRequest(unique_ptr<Request> request) {
-//TODO: this mechanism broken
-  uv_async_t* async = new uv_async_t();
-  request->set_data(this);
-  async->data = request.release();
-}
-
-void UvConnection::WriteRequest(uv_async_t* handle, int status) {
-  unique_ptr<Request> request(static_cast<Request*>(handle->data));
-  uv_close(reinterpret_cast<uv_handle_t*>(handle), OnCloseHandle<uv_async_t>);
-
-  UvConnection* ths = static_cast<UvConnection*>(request->data());
-  if (!ths->connected()) {
-    request->set_error_msg("connection closed");
-    request->Notify();
-    return;
-  }
+void UvConnection::WriteRequest(unique_ptr<Request> request) {
 
   const string& cmd = request->command();
   uv_buf_t write_buffer = uv_buf_init(const_cast<char*>(cmd.data()), cmd.size());
   uv_write_t* write_req = new uv_write_t();
+  request->set_data(this);
   write_req->data = request.get();
 
-  int r = uv_write(write_req, ths->socket_stream(), &write_buffer, 1, UvConnection::OnWrite);
+  int r = uv_write(write_req, socket_stream(), &write_buffer, 1, UvConnection::OnWrite);
   if (r != 0) {
     request->set_error_msg("write init failed");
     request->Notify();
-    ths->Reset("tcp write initiation error");
+    Reset("tcp write initiation error");
     return;
   }
   request.release();

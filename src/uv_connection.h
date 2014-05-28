@@ -30,7 +30,7 @@ public:
 
   void Close(const std::string& message);
 
-  void SubmitRequest(std::unique_ptr<Request> request);
+  void WriteRequest(std::unique_ptr<Request> request);
 
   bool connected() { return connected_; }
 
