@@ -53,10 +53,13 @@ int main(const int argc, const char* argv[]) {
 
     system_clock::time_point end = system_clock::now();
 
-    cout << duration_cast<milliseconds>(end-start).count() << endl;
+    double total_ops = client_thread_count * ops_per_thread;
+    double ops_per_sec = (1000 * total_ops) / duration_cast<milliseconds>(end-start).count();
+    cout << pool_size << " " << client_thread_count << " " << ops_per_thread << " " << ops_per_sec << endl;
 
   } catch(exception& e) {
     cout << "exception: " << e.what() << endl;
+    exit(1);
   }
   memcx::Shutdown();
   return 0;
