@@ -8,9 +8,9 @@ This is a toy library created as an exercise using libuv to communicate with mem
 
 Design Discussion
 -----------------
-My original ambition led me to pursue a design that could support multiple outstanding requests per connection. The theory was that highly concurrent applications could benefit from the possiblility of pipelining requests and making the client/server traffic less chatty.
+My original ambition led me to pursue a design that could support multiple outstanding requests per connection. The theory was that highly concurrent applications could benefit from the possiblility of pipelining requests and making the client/server traffic less chatty. I think I have demonstrated superficial evidence of this theory ([further discussion in wiki](https://github.com/aholmberg/memcx/wiki/Throughput-Discussion)). 
 
-Since going throughout this exercise, I think I have validated this theory (see throughput discussion). However, there is a limitation to this approach: the protocol needs to be reliable, and state machine airtight. Without any kind of frame identifier in the message stream, an 'unexpected' state could cause the request pipeline to break. This has not been an issue in the simple commands implemented thus far, but it is recognized as a possibility.
+However, there is a limitation to this approach: the protocol needs to be reliable, and state machine airtight. Without any kind of frame identifier in the message stream, an 'unexpected' state could cause the request pipeline to break. This has not been an issue in the simple commands implemented thus far, but it is recognized as a possibility.
  
 Concept of Operation
 --------------------
