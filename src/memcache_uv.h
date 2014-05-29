@@ -29,8 +29,8 @@ public:
   MemcacheUv& operator=(const MemcacheUv&) = delete;
   ~MemcacheUv();
 
-  void SendRequest(std::unique_ptr<Request> req);
-  void WaitConnect(const std::chrono::milliseconds& timeout);
+  void SendRequest(std::unique_ptr<UvRequest> req, const uint64_t timeout_ms);
+  void WaitConnect(const uint64_t timeout_ms);
 
 private:
   void ConnectEvent(UvConnection* connection);

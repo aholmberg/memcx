@@ -11,7 +11,9 @@ using std::unique_ptr;
 #include <utility>
 using std::move;
 
+using std::chrono::duration_cast;
 using std::chrono::milliseconds;
+using std::chrono::steady_clock;
 using std::future;
 using std::mutex;
 using std::string;
@@ -50,7 +52,9 @@ MemcacheUv::~MemcacheUv() {
   uv_loop_delete(loop_);
 }
 
-void MemcacheUv::SendRequest(unique_ptr<Request> req) {
+void MemcacheUv::SendRequest(unique_ptr<UvRequest> req, uint64_t timeout_ms) {
+  req->set_timeout(timeout_ms);
+  req->set_start_time(steady_clock::now());
   {
     unique_lock<mutex> l(wait_lock_);
     new_requests_.push(req.release());
@@ -69,12 +73,35 @@ void MemcacheUv::SendNewMessages(uv_async_t* async, int status) {
     unique_lock<mutex> l(ths->wait_lock_);
     try {
       while (!ths->new_requests_.empty()) {
-        ConnectionIter connection = ths->NextOpenConnection();
-        connection->WriteRequest(unique_ptr<Request>(ths->new_requests_.front()));
-        ths->new_requests_.pop();
+        UvRequest* req = ths->new_requests_.front();
+
+        if (req->notified()) {// Timer expired in queue
+          ths->new_requests_.pop();
+          delete req;
+          continue;
+        }
+
+        uint64_t timeout_ms = req->timeout();
+        if (timeout_ms > 0) {
+          uint64_t elapsed_ms = duration_cast<milliseconds>(steady_clock::now() - req->start_time()).count();
+          if (elapsed_ms < timeout_ms) {
+            req->StartTimer(ths->loop_, timeout_ms-elapsed_ms);
+            ConnectionIter connection = ths->NextOpenConnection();
+            connection->WriteRequest(unique_ptr<UvRequest>(req));
+            ths->new_requests_.pop();
+          } else {
+            req->set_error_msg("timeout");
+            req->Notify();
+            ths->new_requests_.pop();
+            delete req;
+          }
+        } else {
+          ConnectionIter connection = ths->NextOpenConnection();
+          connection->WriteRequest(unique_ptr<UvRequest>(req));
+          ths->new_requests_.pop();
+        }
       }
-    } catch(exception& e) {
-    }
+    } catch(exception& e) {/*no open connection*/}
   }
 }
 
@@ -93,9 +120,9 @@ void MemcacheUv::ConnectEvent(UvConnection* connection) {
   connect_condition_.notify_all();
 }
 
-void MemcacheUv::WaitConnect(const milliseconds& timeout) {
+void MemcacheUv::WaitConnect(const uint64_t timeout_ms) {
   unique_lock<mutex> l(wait_lock_);
-  if (!connect_condition_.wait_for(l, timeout, [this](){ return live_connections_ > 0; })) {
+  if (!connect_condition_.wait_for(l, milliseconds(timeout_ms), [this](){ return live_connections_ > 0; })) {
     throw runtime_error("Connection timeout");
   }
 }
@@ -133,4 +160,5 @@ void MemcacheUv::Shutdown(uv_async_t* handle, int status) {
   for (UvConnection& c : ths->connections_) {
     c.Close("shutdown");
   }
+  uv_stop(ths->loop_);
 }

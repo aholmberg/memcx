@@ -1,7 +1,6 @@
 #ifndef MEMCX_H
 #define MEMCX_H
 
-#include <chrono>
 #include <functional>
 #include <string>
 
@@ -12,13 +11,14 @@ typedef std::function<void(const std::string& value,
                            const std::string& err)> GetCallback;
 
 const size_t MAX_KEY_LEN = 250;
-const std::chrono::milliseconds DEFAULT_TIMEOUT = std::chrono::milliseconds(25);
+const uint64_t DEFAULT_CONNECT_TIMEOUT = 500;
+const uint64_t DEFAULT_REQUEST_TIMEOUT = 0;// never
 
 // call before any IO operations
 void Init(const std::string& host = "localhost", 
           const int port = 11211,
           const size_t pool_size = 5,
-          const std::chrono::milliseconds& connect_timeout = DEFAULT_TIMEOUT);
+          const uint64_t connect_timeout_ms = DEFAULT_CONNECT_TIMEOUT);
 
 // call on shutdown
 void Shutdown();
@@ -27,19 +27,19 @@ bool IsInit();
 
 void SetSync(const std::string &key, 
              const std::string &value, 
-             const std::chrono::milliseconds& timeout = DEFAULT_TIMEOUT);//TODO: flags
+             const uint64_t timeout_ms = DEFAULT_REQUEST_TIMEOUT);
 
 void SetAsync(const std::string &key, 
               const std::string &value, 
               const SetCallback& callback, 
-              const std::chrono::milliseconds& timeout = DEFAULT_TIMEOUT);
+              const uint64_t timeout_ms = DEFAULT_REQUEST_TIMEOUT);
 
 std::string GetSync(const std::string &key, 
-                    const std::chrono::milliseconds& timeout = DEFAULT_TIMEOUT);
+                    const uint64_t timeout_ms = DEFAULT_REQUEST_TIMEOUT);
 
 void GetAsync(const std::string &key, 
               const GetCallback& callback, 
-              const std::chrono::milliseconds& timeout = DEFAULT_TIMEOUT);
+              const uint64_t timeout_ms = DEFAULT_REQUEST_TIMEOUT);
 
 }
 #endif

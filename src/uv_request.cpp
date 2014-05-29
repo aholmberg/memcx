@@ -1,4 +1,4 @@
-#include "request.h"
+#include "uv_request.h"
 
 #include <stdlib.h>
 
@@ -12,21 +12,57 @@ using std::placeholders::_1;
 using std::placeholders::_2;
 using std::string;
 
-using namespace memcx;
+using namespace memcx::memcuv;
 
 #include "buffer.h"
 
-Request::Request(const string& command):
+UvRequest::UvRequest(const string& command):
   command_(command),
   complete_(false),
-  data_(nullptr) {}
+  connection_(nullptr),
+  notified_(false),
+  timeout_ms_(0),
+  timer_(nullptr) {}
+
+UvRequest::~UvRequest() {
+  StopTimer();
+}
+
+void UvRequest::Notify() {
+  if (!notified_) {
+    DoNotify();
+    notified_ = true; 
+  }
+  StopTimer();
+}
+
+void UvRequest::StartTimer(uv_loop_t* loop, uint64_t timeout_ms) {
+  timer_ = new uv_timer_t();
+  uv_timer_init(loop, timer_);
+  timer_->data = this;
+  uv_timer_start(timer_, Timeout, timeout_ms, 0);
+}
+
+void UvRequest::Timeout(uv_timer_t* handle, int status) {
+  UvRequest* ths = static_cast<UvRequest*>(handle->data);
+  ths->set_error_msg("timeout");
+  ths->Notify();
+}
+
+void UvRequest::StopTimer() {
+  if (timer_ != nullptr) {
+    uv_timer_stop(timer_);
+    uv_close(reinterpret_cast<uv_handle_t*>(timer_), OnCloseHandle<uv_timer_t>);
+    timer_ = nullptr;
+  }
+}
 
 SetRequest::SetRequest(const string& key, 
                        const string& value, 
                        const SetCallback& callback, 
                        unsigned int flags, 
                        unsigned int exp_time):
-  Request(CommandFromParams(key, value, flags, exp_time)),
+  UvRequest(CommandFromParams(key, value, flags, exp_time)),
   callback_(callback) {}
 
 size_t SetRequest::Ingest(Buffer& buffer) {
@@ -52,7 +88,7 @@ size_t SetRequest::Ingest(Buffer& buffer) {
   return read_count_total;
 }
 
-void SetRequest::Notify() {
+void SetRequest::DoNotify() {
   callback_(error_msg());
 }
 
@@ -65,7 +101,6 @@ string SetRequest::CommandFromParams(const string& key,
   ss << value << "\r\n";
   return ss.str();
 }
-
 
 SetRequestAsync::SetRequestAsync(const string& key, 
                                  const string& value, 
@@ -82,7 +117,7 @@ void SetRequestAsync::SetResponse(const string& error) {
 }
 
 GetRequest::GetRequest(const string& key, const GetCallback& callback):
-  Request(CommandFromKey(key)),
+  UvRequest(CommandFromKey(key)),
   callback_(callback),
   expected_size_(0),
   flags_(0),
@@ -138,7 +173,7 @@ size_t GetRequest::Ingest(Buffer& buffer) {
   return read_count_total;
 }
 
-void GetRequest::Notify() {
+void GetRequest::DoNotify() {
   callback_(value_, error_msg());
 }
 

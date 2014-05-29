@@ -8,11 +8,12 @@ using std::to_string;
 #include <cppunit/ui/text/TestRunner.h>
 
 #include "buffer.h"
-#include "request.h"
+#include "uv_request.h"
 
 using memcx::Buffer;
 using memcx::GetCallback;
-using memcx::GetRequest;
+using memcx::memcuv::GetRequest;
+using memcx::memcuv::UvConnection;
 
 class GetRequestTests : public CppUnit::TestFixture
 {
@@ -30,12 +31,10 @@ public:
     GetCallback cb([&cb_activated](const string& value, const string& err) { cb_activated = true; });
     const string key = "key";
     const string value = "value";
-    const unsigned int flag = 1;
-    const unsigned int exp = 2;
     GetRequest g(key,cb);
     CPPUNIT_ASSERT_EQUAL(string("get key\r\n"), g.command());
     CPPUNIT_ASSERT(!g.complete());
-    CPPUNIT_ASSERT_EQUAL((void*)nullptr, g.data());
+    CPPUNIT_ASSERT_EQUAL((UvConnection*)nullptr, g.connection());
     CPPUNIT_ASSERT(!g.IsError());
     CPPUNIT_ASSERT(g.error_msg().empty());
     CPPUNIT_ASSERT(!cb_activated);

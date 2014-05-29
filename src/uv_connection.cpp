@@ -9,19 +9,13 @@ using std::unique_ptr;
 
 using namespace memcx::memcuv;
 
-template<typename T>
-void OnCloseHandle(uv_handle_t* handle) {
-  T* t = reinterpret_cast<T*>(handle);
-  delete t;
-}
-
 UvConnection::UvConnection(uv_loop_t *loop,
                            const struct sockaddr_in &endpoint,
                            const ConnectionCallback& connect_callback):
-loop_(loop),
-endpoint_(endpoint),
+connect_callback_(connect_callback),
 connected_(false),
-connect_callback_(connect_callback) {
+endpoint_(endpoint),
+loop_(loop) {
   Connect();
 }
 
@@ -38,7 +32,7 @@ void UvConnection::Close(const string& message) {
   connected_ = false;
 
   while (requests_.size()) {
-    Request* req = requests_.front();
+    UvRequest* req = requests_.front();
     req->set_error_msg(message);
     req->Notify();
     requests_.pop();
@@ -98,12 +92,12 @@ void UvConnection::Reconnect(uv_timer_t* handle, int status) {
   ths->Connect();
 }
 
-void UvConnection::WriteRequest(unique_ptr<Request> request) {
+void UvConnection::WriteRequest(unique_ptr<UvRequest> request) {
 
   const string& cmd = request->command();
   uv_buf_t write_buffer = uv_buf_init(const_cast<char*>(cmd.data()), cmd.size());
   uv_write_t* write_req = new uv_write_t();
-  request->set_data(this);
+  request->set_connection(this);
   write_req->data = request.get();
 
   int r = uv_write(write_req, socket_stream(), &write_buffer, 1, UvConnection::OnWrite);
@@ -118,13 +112,13 @@ void UvConnection::WriteRequest(unique_ptr<Request> request) {
 
 void UvConnection::OnWrite(uv_write_t *req, int status) {
   unique_ptr<uv_write_t> write_req(req);
-  unique_ptr<Request> request(static_cast<Request*>(write_req->data));
+  unique_ptr<UvRequest> request(static_cast<UvRequest*>(write_req->data));
   if (status != 0) {
     request->set_error_msg("write failed");
     request->Notify();
     return;
   }
-  UvConnection* ths = static_cast<UvConnection*>(request->data());
+  UvConnection* ths = static_cast<UvConnection*>(request->connection());
   ths->requests_.push(request.release());
 }
 
@@ -146,7 +140,7 @@ void UvConnection::OnRead(uv_stream_t* req, ssize_t nread, uv_buf_t buf) {
 
 void UvConnection::ProcessData() {
   while (!requests_.empty()) {
-    Request* req = requests_.front();
+    UvRequest* req = requests_.front();
     if (req->Ingest(buffer_) > 0) {
       if (req->complete()) {
         req->Notify();

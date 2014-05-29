@@ -7,11 +7,12 @@ using std::string;
 #include <cppunit/ui/text/TestRunner.h>
 
 #include "buffer.h"
-#include "request.h"
+#include "uv_request.h"
 
 using memcx::Buffer;
 using memcx::SetCallback;
-using memcx::SetRequest;
+using memcx::memcuv::SetRequest;
+using memcx::memcuv::UvConnection;
 
 class SetRequestTests : public CppUnit::TestFixture
 {
@@ -36,7 +37,7 @@ public:
     SetRequest s(key, value, cb, flag, exp);
     CPPUNIT_ASSERT_EQUAL(string("set key 1 2 5\r\nvalue\r\n"), s.command());
     CPPUNIT_ASSERT(!s.complete());
-    CPPUNIT_ASSERT_EQUAL((void*)nullptr, s.data());
+    CPPUNIT_ASSERT_EQUAL((UvConnection*)nullptr, s.connection());
     CPPUNIT_ASSERT(!s.IsError());
     CPPUNIT_ASSERT(s.error_msg().empty());
     CPPUNIT_ASSERT(!cb_activated);

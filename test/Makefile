@@ -1,12 +1,11 @@
 CXX=g++
-#CFLAGS=-O3 -Wall -fPIC
-CFLAGS=-g -fPIC -std=c++11
+CFLAGS=-O3 -Wall -fpic -std=c++11
+#CFLAGS=-g -fpic -std=c++11
 
 DEFS=
 INCL=-I../src
 LIBS=-luv -lcppunit
 EXCLUDES:=tput.cpp
-HDRS:=$(wildcard *.h)
 SRCS:=$(wildcard *.cpp)
 TESTS_SRC:=$(filter-out $(EXCLUDES), $(SRCS))
 ALL_TESTS:=$(patsubst %.cpp, %.exe, $(TESTS_SRC))
@@ -23,14 +22,6 @@ all: $(ALL_TESTS)
 
 clean:        
 	@rm -Rf *.exe *.dSYM
-
-var:        
-	@echo HDRS ${HDRS}        
-	@echo SRCS ${SRCS}        
-	@echo OBJS ${OBJS}
-	@echo ALL_TESTS ${ALL_TESTS}
-	@echo LIBS ${LIBS}
-	@echo INCL ${INCL}
 
 %.exe: %.cpp ../src/libmemcuv.a
 	${CXX} ${DEFS} ${INCL} -o $@ ${CFLAGS} $^ ${LIBS}

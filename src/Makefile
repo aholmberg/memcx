@@ -1,14 +1,11 @@
 CXX=g++
-#CFLAGS=-O3 -Wall -fPIC
-CFLAGS=-g -fPIC -std=c++11
+CFLAGS=-O3 -Wall -fpic -std=c++11
+#CFLAGS=-g -fpic -std=c++11
 
 DEFS=
 INCL=-I.
 LIBS=-luv
-EXCLUDES:=
-HDRS:=$(wildcard *.h)
 SRCS:=$(wildcard *.cpp)
-SRCS:=$(filter-out $(EXCLUDES), $(SRCS))
 OBJS:=$(patsubst %.cpp, %.o, $(SRCS))
 
 all: libmemcuv.so libmemcuv.a
@@ -24,8 +21,3 @@ libmemcuv.a: ${OBJS}
 
 clean:        
 	@rm -f *.o *.a *.so
-
-var:        
-	@echo HDRS ${HDRS}        
-	@echo SRCS ${SRCS}        
-	@echo OBJS ${OBJS}

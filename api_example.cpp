@@ -5,16 +5,17 @@
 
 using namespace std;
 
+int KEYS = 10;
+
 void SetSync() {
   cout << "SetSync: ";
   try {
     memcx::SetSync("asdf", "hello");
-    int keys = 1000;
-    for (int i = 1; i <= 1000; ++i) {
+    for (int i = 0; i < KEYS; ++i) {
       string kv = to_string(i);
       memcx::SetSync(kv, kv);
     }
-    cout << "set " << keys << " keys\n";
+    cout << "set " << KEYS << " keys\n";
   } catch(exception& e) {
     cout << "SetSync failed: " << e.what() << endl;
   }
@@ -45,7 +46,7 @@ void GetSync() {
   try {
     string asdf = memcx::GetSync("asdf");
     cout << "asdf=" << asdf << endl;
-    for (int i = 1; i < 1000; ++i) {
+    for (int i = 0; i < KEYS; ++i) {
       string kv = to_string(i);
       cout << kv << "=" << memcx::GetSync(kv) << endl;
     }

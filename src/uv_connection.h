@@ -7,13 +7,13 @@
 #include <queue>
 
 #include "buffer.h"
-#include "request.h"
+#include "uv_request.h"
 
 namespace memcx {
 
-typedef std::queue<Request*> RequestQueue;
-
 namespace memcuv {
+
+typedef std::queue<UvRequest*> RequestQueue;
 
 class UvConnection {
 
@@ -30,7 +30,7 @@ public:
 
   void Close(const std::string& message);
 
-  void WriteRequest(std::unique_ptr<Request> request);
+  void WriteRequest(std::unique_ptr<UvRequest> request);
 
   bool connected() { return connected_; }
 

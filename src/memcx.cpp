@@ -12,11 +12,10 @@ using std::string;
 #include <sstream>
 using std::stringstream;
 
-using std::chrono::milliseconds;
-
 #include "memcache_uv.h"
 
 using namespace memcx;
+using namespace memcuv;
 
 static memcuv::MemcacheUv* client = nullptr;
 
@@ -24,14 +23,14 @@ void memcx::Init(
      const string& host,
      const int port,
      const size_t pool_size, 
-     const milliseconds& timeout) {
+     const uint64_t timeout_ms) {
 
   if (IsInit()) {
     throw runtime_error("memcx::Init already initialized");
   }
  
   client = new memcuv::MemcacheUv(host, port, pool_size);
-  client->WaitConnect(timeout);
+  client->WaitConnect(timeout_ms);
 }
 
 void memcx::Shutdown() {
@@ -65,35 +64,35 @@ void Validate(const string& key, const char* function) {
   
 void memcx::SetSync(const string& key, 
                     const string& value, 
-                    const milliseconds& timeout) {
+                    const uint64_t timeout_ms) {
   Validate(key, __FUNCTION__);
   SetRequestAsync* req = new SetRequestAsync(key, value);
   future<void> set_future = req->GetFuture();
-  client->SendRequest(unique_ptr<SetRequest>(req));
+  client->SendRequest(unique_ptr<SetRequest>(req), timeout_ms);
   set_future.get();
 }
 
 void memcx::SetAsync(const string& key, 
                      const string& value, 
                      const SetCallback& callback, 
-                     const milliseconds& timeout) {
+                     const uint64_t timeout_ms) {
   Validate(key, __FUNCTION__);
-  SetRequest* req = new SetRequest(key, value, callback);
-  client->SendRequest(unique_ptr<SetRequest>(req));
+  SetRequest* req = new SetRequest(key, value, callback, timeout_ms);
+  client->SendRequest(unique_ptr<SetRequest>(req), timeout_ms);
 }
 
-string memcx::GetSync(const string& key, const milliseconds& timeout) {
+string memcx::GetSync(const string& key, const uint64_t timeout_ms) {
   Validate(key, __FUNCTION__);
   GetRequestAsync* req = new GetRequestAsync(key);
   future<string> get_future = req->GetFuture();
-  client->SendRequest(unique_ptr<GetRequest>(req));
+  client->SendRequest(unique_ptr<GetRequest>(req), timeout_ms);
   return get_future.get();
 }
 
 void memcx::GetAsync(const string& key, 
                      const GetCallback& callback, 
-                     const milliseconds& timeout) {
+                     const uint64_t timeout_ms) {
   Validate(key, __FUNCTION__);
   GetRequest* req = new GetRequest(key, callback);
-  client->SendRequest(unique_ptr<GetRequest>(req));
+  client->SendRequest(unique_ptr<GetRequest>(req), timeout_ms);
 }
